@@ -12,29 +12,47 @@ import (
 	"github.com/sk25469/scribble_backend/pkg/utils"
 )
 
-var connectedClients []string
-var mrouter = config.GetWebSocketRouter()
+//	We will use an array of size 11, each array will have a set of all the room ids which have the size set to the index of the array
+//	When a client will get disconnected, we will iterate across the array and check the index where the roomId exists, and then erase it from that set
+//	and add it to the index before it, or according to the no. of clients who got diconnected
 
-// var logger = config.GetLogger()
-var response model.ServerResponse
-var privateRoomsMap map[string]*model.Room = make(map[string]*model.Room)
-var publicRoomsBasedPriorityQueue model.PriorityQueue
-var publicRoomsMap map[string]*model.Room = make(map[string]*model.Room)
+var (
+	//	Total clients connected with the server
+	connectedClients []string
 
-// 1st key is roomID, 2nd key is clientID and value is session
-var totalClientsInSession map[string](map[string]*melody.Session) = make(map[string]map[string]*melody.Session)
+	//	Router for the web-socket
+	mrouter = config.GetWebSocketRouter()
+
+	//	Response given by the server (can be changed according to the kind of request we want to change)
+	response model.ServerResponse
+
+	//	ID -> Room (private)
+	privateRoomsMap map[string]*model.Room = make(map[string]*model.Room)
+
+	//	!FIXME: Don't use priority queue, use OrderedSet
+	// No. of rooms based priority queue, when all the rooms have min 10 clients, we have to add new room to the queue, otherwise change in the topmost room
+	publicRoomsBasedPriorityQueue model.PriorityQueue
+
+	//	ID -> Room (private)
+	publicRoomsMap map[string]*model.Room = make(map[string]*model.Room)
+
+	// 1st key is roomID, 2nd key is clientID and value is session
+	totalClientsInSession map[string](map[string]*melody.Session) = make(map[string]map[string]*melody.Session)
+
+	// zap logger
+	logger = config.GetLogger()
+)
 
 // TYPES OF REQUEST SENT BY SERVER
 //
-//  1. "new" : A new client joins the network, but is not currently in any room
+//		!FIXME: Don't make id while in iam request, when the user sends the name, create id and allote the room only there
+//	 2. "iam" : The newly joined client sends a name and the kind of room it wants to join
+//		!FIXME: Only send id of the client joined, and the roomInfo where it joined
+//	 3. "total" : Other clients are informed if any new client joins that room
 //
-//  2. "iam" : The newly joined client sends a name and the kind of room it wants to join
+//	 4. "set" : When a client is drawing, it will send its x,y co-ordinate to others in the room
 //
-//  3. "total" : Other clients are informed if any new client joins that room
-//
-//  4. "set" : When a client is drawing, it will send its x,y co-ordinate to others in the room
-//
-//  5. "dis" : Informs others in the room that "id" has disconnected
+//	 5. "dis" : Informs others in the room that "id" has disconnected
 func OnConnect(s *melody.Session) {
 
 	// now the new session is assigned a new id
@@ -70,6 +88,7 @@ func OnConnect(s *melody.Session) {
 
 }
 
+// Will be triggered when the client "s" disconnects
 func OnDisconnect(s *melody.Session) {
 	info := s.MustGet("info").(*model.ClientInfo)
 	var err error
@@ -97,18 +116,22 @@ func OnDisconnect(s *melody.Session) {
 //  3. "move" : A client is drawing on the screen
 func OnMessage(s *melody.Session, msg []byte) {
 	var clientResponse *model.ClientResponse
+
+	//	take the response from the client and convert it to json
 	err := json.Unmarshal(msg, &clientResponse)
 	if err != nil {
-		log.Printf("error decoding sakura response: %v", err)
+		log.Printf("error decoding response: %v", err)
 		if e, ok := err.(*json.SyntaxError); ok {
 			log.Printf("syntax error at byte offset %d", e.Offset)
 		}
-		log.Printf("sakura response: %q", clientResponse)
+		log.Printf("response: %q", clientResponse)
 
 	}
 	info := s.MustGet("info").(*model.ClientInfo)
 	clientID := info.ClientID
 	clientName := clientResponse.ClientInfo.Name
+
+	// set up the new client info with the name we got from the client
 	newClientInfo := model.ClientInfo{ClientID: clientID, Name: clientName}
 	log.Printf("New client info: %v", newClientInfo)
 	if clientResponse.ReponseType == "connect-new" {
@@ -116,7 +139,6 @@ func OnMessage(s *melody.Session, msg []byte) {
 		var newRoomID string
 
 		//	if he wants to create a private room, a new key for room is created
-
 		if clientResponse.RoomType == "private" {
 			newRoomID = utils.GetKey()
 			grp1, grp2 := utils.InsertClientInRoom([]string{}, []string{}, clientID)
@@ -148,6 +170,7 @@ func OnMessage(s *melody.Session, msg []byte) {
 				totalClients := len(topRoom.Group1) + len(topRoom.Group2)
 				//	max 10 clients can be in a room
 				//	if crosses 10, new room is formed
+				//	TODO: Don't keep rooms which have at least 10 clients
 				if totalClients == 10 {
 					newRoomID := utils.GetKey()
 					AddAndUpdatePublicRooms([]string{}, []string{}, clientID, newRoomID)
