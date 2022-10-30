@@ -1,11 +1,15 @@
 package utils
 
-import "errors"
+import (
+	"errors"
 
-func Remove(s []string, ID string) ([]string, error) {
+	"github.com/sk25469/scribble_backend/pkg/model"
+)
+
+func Remove(s []model.ClientInfo, client model.ClientInfo) ([]model.ClientInfo, error) {
 	idx := -1
 	for index, val := range s {
-		if val == ID {
+		if val == client {
 			idx = index
 			break
 		}
