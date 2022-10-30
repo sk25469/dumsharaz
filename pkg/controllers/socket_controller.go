@@ -135,7 +135,7 @@ func OnMessage(s *melody.Session, msg []byte) {
 			if publicRoomBucket.IsEmpty() {
 				newRoomID = utils.GetKey()
 				newClientInfo.RoomID = newRoomID
-				newRoom := AddAndUpdatePublicRooms([]model.ClientInfo{}, []model.ClientInfo{newClientInfo}, newClientInfo, newRoomID)
+				newRoom := AddAndUpdatePublicRooms([]model.ClientInfo{}, []model.ClientInfo{}, newClientInfo, newRoomID)
 				log.Printf("User has been assigned %v\nNo rooms in PQ, creating new room..\n", newRoomID)
 				jsonResponse, err := json.Marshal(model.ServerResponse{ResponseType: "total", ClientInfo: newClientInfo, RoomInfo: *newRoom})
 				if err != nil {
@@ -150,6 +150,11 @@ func OnMessage(s *melody.Session, msg []byte) {
 				newClientInfo.RoomID = newRoomID
 				// update the groups of the current room which has the lowest no. of clients
 				newRoom := AddAndUpdatePublicRooms(prevRoomWithoutUpdate.Group1, prevRoomWithoutUpdate.Group2, newClientInfo, newRoomID)
+
+				if totalClientsInSession[newRoomID] == nil {
+					totalClientsInSession[newRoomID] = make(map[string]*melody.Session)
+				}
+				totalClientsInSession[newRoomID][clientID] = s
 				BroadcastMessageInRoom(newRoom, newClientInfo)
 				log.Printf("User has been assigned %v\nNo need to create new Room, assigned to already exsiting\n", newRoomID)
 
@@ -220,6 +225,7 @@ func AddAndUpdatePublicRooms(group1, group2 []model.ClientInfo, client model.Cli
 	client.RoomID = newRoomID
 	grp1, grp2 := utils.InsertClientInRoom(group1, group2, client)
 	newRoom := model.Room{RoomID: newRoomID, Group1: grp1, Group2: grp2}
+	log.Printf("New room: %v", newRoom)
 	publicRoomBucket.AddUserToBucket(client.RoomID)
 	// update the mapping for public room
 	publicRoomsMap[newRoomID] = &newRoom
