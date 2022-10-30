@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/olahol/melody"
-	"github.com/sk25469/scribble_backend/pkg/config"
 	"github.com/sk25469/scribble_backend/pkg/model"
 	"github.com/sk25469/scribble_backend/pkg/utils"
 )
@@ -15,7 +14,7 @@ import (
 var (
 
 	//	Router for the web-socket
-	mrouter = config.GetWebSocketRouter()
+	// mrouter = config.GetWebSocketRouter()
 
 	//	Response given by the server (can be changed according to the kind of request we want to change)
 	response model.ServerResponse
@@ -66,21 +65,14 @@ func OnConnect(s *melody.Session) {
 
 // Will be triggered when the client "s" disconnects
 func OnDisconnect(s *melody.Session) {
-	// info := s.MustGet("info").(*model.ClientInfo)
-	var err error
-	// connectedClients, err = utils.Remove(connectedClients, info.ClientID)
-	if err != nil {
-		log.Fatal(err)
+	info := s.MustGet("info").(*model.ClientInfo)
+	roomID := info.RoomID
+	if _, ok := privateRoomsMap[roomID]; ok {
+		UpdateEverythingAfterDisconnect(*info, roomID, "private")
+	} else {
+		UpdateEverythingAfterDisconnect(*info, roomID, "public")
 	}
-	// response.ConnectedClients = connectedClients
-	// response.ID = info.ClientID
-	response.ResponseType = "dis"
-	jsonResponse, err := json.Marshal(&response)
-	if err != nil {
-		log.Print("can't marshall reponse")
-	}
-	// fmt.Printf("size before broadcasting %v\n", len(connectedClients))
-	mrouter.BroadcastOthers([]byte(jsonResponse), s)
+
 }
 
 // TYPES OF REQUEST SENT BY CLIENT
@@ -155,7 +147,7 @@ func OnMessage(s *melody.Session, msg []byte) {
 					totalClientsInSession[newRoomID] = make(map[string]*melody.Session)
 				}
 				totalClientsInSession[newRoomID][clientID] = s
-				BroadcastMessageInRoom(newRoom, newClientInfo)
+				BroadcastMessageInRoom(newRoom, newClientInfo, "total")
 				log.Printf("User has been assigned %v\nNo need to create new Room, assigned to already exsiting\n", newRoomID)
 
 			}
@@ -192,31 +184,11 @@ func OnMessage(s *melody.Session, msg []byte) {
 			totalClientsInSession[roomID] = make(map[string]*melody.Session)
 		}
 		totalClientsInSession[roomID][clientID] = s
-		BroadcastMessageInRoom(&newRoom, newClientInfo)
+		BroadcastMessageInRoom(&newRoom, newClientInfo, "total")
 	}
 
 	// TODO: Create logic for updating points while drawing on screen
-	// if len(p) == 2 {
-	// 	// we get the info of the current session from the server
-	// 	info := s.MustGet("info").(*model.ClientInfo)
 
-	// 	// we assign the x and y coordinates to it,
-	// 	// every time there is some new activity on the client
-	// 	info.X = p[0]
-	// 	info.Y = p[1]
-	// 	response.ResponseType = "set"
-	// 	response.ID = info.ClientID
-	// 	response.ClientInfo = &model.ClientInfo{ClientID: info.ClientID, X: p[0], Y: p[1]}
-
-	// 	jsonResponse, err := json.Marshal(&response)
-	// 	if err != nil {
-	// 		log.Print("can't marshall reponse")
-	// 	}
-
-	// 	// then sends the message to all others
-	// 	mrouter.BroadcastOthers([]byte(jsonResponse), s)
-	// 	fmt.Println(info)
-	// }
 }
 
 // updates the groups with equal distribution, inserts the updated room in the priority queue
@@ -229,16 +201,16 @@ func AddAndUpdatePublicRooms(group1, group2 []model.ClientInfo, client model.Cli
 	publicRoomBucket.AddUserToBucket(client.RoomID)
 	// update the mapping for public room
 	publicRoomsMap[newRoomID] = &newRoom
-	log.Printf("Allocated new room: %v\nAdded to PQ\n", newRoom)
+	log.Printf("Allocated new room: %v\n", newRoom)
 	return &newRoom
 }
 
 // broadcast message in a room
-func BroadcastMessageInRoom(room *model.Room, clientInfo model.ClientInfo) {
+func BroadcastMessageInRoom(room *model.Room, clientInfo model.ClientInfo, responseType string) {
 	// broadcast in group1
 	for _, client := range room.Group1 {
 		session := totalClientsInSession[room.RoomID][client.ClientID]
-		serverResponse := model.ServerResponse{ResponseType: "total", ClientInfo: clientInfo, RoomInfo: *room}
+		serverResponse := model.ServerResponse{ResponseType: responseType, ClientInfo: clientInfo, RoomInfo: *room}
 		jsonReponse, err := json.Marshal(&serverResponse)
 		if err != nil {
 			log.Fatal("cant parse json response")
@@ -250,7 +222,7 @@ func BroadcastMessageInRoom(room *model.Room, clientInfo model.ClientInfo) {
 
 	for _, client := range room.Group2 {
 		session := totalClientsInSession[room.RoomID][client.ClientID]
-		serverResponse := model.ServerResponse{ResponseType: "total", ClientInfo: clientInfo, RoomInfo: *room}
+		serverResponse := model.ServerResponse{ResponseType: responseType, ClientInfo: clientInfo, RoomInfo: *room}
 		jsonReponse, err := json.Marshal(&serverResponse)
 		if err != nil {
 			log.Fatal("cant parse json response")
@@ -262,21 +234,49 @@ func BroadcastMessageInRoom(room *model.Room, clientInfo model.ClientInfo) {
 
 }
 
-// sends message in a group, can be in same or another
-// func SendMessageInGroup(grp []string, clientInfo model.ClientInfo) {
-// 	roomID := clientInfo.RoomID
-// 	clientID := clientInfo.ClientID
-// 	for i := 0; i < len(grp); i++ {
-// 		id := grp[i]
-// 		session, ok := totalClientsInSession[roomID][id]
-// 		if !ok {
-// 			log.Fatal("user is not in the session")
-// 		}
-// 		serverResponse := model.ServerResponse{ResponseType: "total", ID: clientID, ConnectedClients: connectedClients, ClientInfo: clientInfo}
-// 		jsonReponse, err := json.Marshal(&serverResponse)
-// 		if err != nil {
-// 			log.Fatal("cant parse json response")
-// 		}
-// 		session.Write([]byte(jsonReponse))
-// 	}
-// }
+// When user diconnects, these logic updates everything accordingly
+func UpdateEverythingAfterDisconnect(client model.ClientInfo, roomID string, roomType string) {
+	var room map[string]*model.Room
+	if roomType == "public" {
+		room = publicRoomsMap
+	} else {
+		room = privateRoomsMap
+	}
+	currentRoomStatus := room[roomID]
+	len := len(currentRoomStatus.Group1) + len(currentRoomStatus.Group2)
+	log.Printf("Current Room: %v", currentRoomStatus)
+	var newGrp1 []model.ClientInfo = make([]model.ClientInfo, 0)
+	var newGrp2 []model.ClientInfo = make([]model.ClientInfo, 0)
+	var err error
+	//	TODO: Handle when no. of clients in a room becomes < 4
+	if len < 4 {
+		log.Fatal("No. of clients < 4, can't play the game")
+	}
+	if currentRoomStatus.Group1 == nil {
+		newGrp1 = currentRoomStatus.Group1
+	}
+	if currentRoomStatus.Group2 == nil {
+		newGrp2 = currentRoomStatus.Group2
+	}
+	newGrp1, err = utils.Remove(newGrp1, client)
+	if err != nil {
+		newGrp2, err = utils.Remove(newGrp2, client)
+		if err != nil {
+			log.Fatal("client is in neither of rooms")
+		}
+	}
+	newRoom := model.Room{RoomID: client.RoomID, Group1: newGrp1, Group2: newGrp2}
+	// delete the user from privateRoomMap
+	delete(room, roomID)
+
+	// delete from totalConnectedClientsMap
+	delete(totalClientsInSession[roomID], client.ClientID)
+
+	// update the room bucket with size
+	if roomType == "public" {
+		publicRoomBucket.RemoveUserFromBucket(roomID)
+	}
+
+	// broadcast others that user has disconnected
+	BroadcastMessageInRoom(&newRoom, client, "dis")
+}
