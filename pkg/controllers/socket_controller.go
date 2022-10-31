@@ -252,10 +252,10 @@ func UpdateEverythingAfterDisconnect(client model.ClientInfo, roomID string, roo
 	if len < 4 {
 		log.Fatal("No. of clients < 4, can't play the game")
 	}
-	if currentRoomStatus.Group1 == nil {
+	if currentRoomStatus.Group1 != nil {
 		newGrp1 = currentRoomStatus.Group1
 	}
-	if currentRoomStatus.Group2 == nil {
+	if currentRoomStatus.Group2 != nil {
 		newGrp2 = currentRoomStatus.Group2
 	}
 	newGrp1, err = utils.Remove(newGrp1, client)
