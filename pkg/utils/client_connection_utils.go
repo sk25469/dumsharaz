@@ -16,7 +16,7 @@ func Remove(s []model.ClientInfo, client model.ClientInfo) ([]model.ClientInfo, 
 	}
 
 	if idx == -1 {
-		return s, errors.New("ID doesn't exits")
+		return s, errors.New("ID doesn't exists")
 	}
 
 	s[idx] = s[len(s)-1]
