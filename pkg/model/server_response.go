@@ -10,4 +10,5 @@ type ServerResponse struct {
 	//	ClientInfo from where the request is coming from
 	ClientInfo ClientInfo `json:"client_info"`
 	RoomInfo   Room       `json:"room_info"`
+	Point      Point      `json:"point"`
 }
