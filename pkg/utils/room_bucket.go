@@ -18,7 +18,7 @@ func Init() *RoomBucket {
 // A client has connected to roomID, we need to remove the room from its existing bucket and put in updated sized bucket
 func (bucket RoomBucket) AddUserToBucket(roomID string) {
 	bucketSize := 0
-	for i := 1; i < 11; i++ {
+	for i := 1; i < 10; i++ {
 		if _, ok := bucket.Buckets[i][roomID]; ok {
 			bucketSize = i
 			break

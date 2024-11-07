@@ -8,4 +8,5 @@ type ClientResponse struct {
 	RoomID     string     `json:"room_id"`
 	ClientInfo ClientInfo `json:"client_info"`
 	RoomType   string     `json:"room_type"`
+	Point      Point      `json:"point"`
 }
